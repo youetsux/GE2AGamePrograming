@@ -59,7 +59,7 @@ Ground::Ground(GameObject* parent)
 			if(objMap_[y][x] > 0){
 				Food* food = (Food*)Instantiate<Food>(this);
 				esaCount_++;//‰a‚Ì”‚ðƒJƒEƒ“ƒg
-				food->SetPosition({ -9.0f + x * 2.0f, 0.0f, 9.0f - y * 2.0f });
+				food->SetPosition({ -9.0f + x * 2.0f,  9.0f - y * 2.0f, -1.0f });
 				if (objMap_[y][x] == 1)
 				{
 					food->SetFoodType(FoodType::FOODTYPE_NORMAL);
@@ -80,7 +80,7 @@ Ground::Ground(GameObject* parent)
 void Ground::Initialize()
 {
 	hModel_ = Model::Load("jimen3.fbx");
-	hModelt_ = Model::Load("BrickV.fbx");
+	hModelt_ = Model::Load("BrickG.fbx");
 	//hEsaModel_ = Model::Load("esa.fbx");
 	//hPEsaModel_ = Model::Load("Poweresa.fbx");
 }
@@ -91,13 +91,20 @@ void Ground::Update()
 
 void Ground::Draw()
 {
+	const int GROUND_WIDTH = 20.0f;
+	for(int i = 0;i < 3; i++) {
+		transform_.position_ = { 9.0f + GROUND_WIDTH*i, 10.0f, 1.0f };
+		transform_.rotate_ = { -90.0f, 0.0f, 0.0f };
+		Model::SetTransform(hModel_, transform_);
+		Model::Draw(hModel_);
+	}
+
 	Model::SetTransform(hModel_, transform_);
-	Model::Draw(hModel_);
-	for (int j = 0;j < 10;j++) {
-		for (int i = 0;i < 10;i++) {
+	for (int j = 0;j < mapHeight_;j++) {
+		for (int i = 0;i < mapWidth_;i++) {
 			if (mapData_[j][i] == 1) {
 				Transform tr;
-				tr.position_ = { -9.0f + i * 2.0f, 0.0f, 9.0f - j * 2.0f };
+				tr.position_ = {  i * 2.0f,  j * 1.0f, 0.0f };
 				Model::SetTransform(hModelt_, tr);
 				Model::Draw(hModelt_);
 			}

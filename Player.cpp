@@ -48,6 +48,8 @@ namespace
 		return angle;
 	}
 	std::vector<std::vector<int>> gmap;
+	XMFLOAT3 START_POS = { 15.0f, 0.75, 0.5f };
+
 }
 
 
@@ -62,7 +64,7 @@ void Player::Initialize()
 {
 	hWalkModel_ = Model::Load("Walking.fbx");
 	Model::SetAnimFrame(hWalkModel_, 0, 59, 1.0);
-	transform_.position_ = { 0.5f, 0.0, 0.5f };
+	transform_.position_ = START_POS;
 	hIdleModel_ = Model::Load("Idle.fbx");
 	Model::SetAnimFrame(hIdleModel_, 0, 117, 1.0);
 	SphereCollider* collision = new SphereCollider(XMFLOAT3(0, 0.25, 0), 0.5f);
@@ -83,7 +85,7 @@ void Player::Update()
 	
 	XMVECTOR pos = XMLoadFloat3(&transform_.position_);
 	XMVECTOR move = XMVectorSet(0, 0, 0, 0);
-	const float SPEED = 0.05f;
+	const float SPEED = 0.1f;
 	float angle = 0.0f;
 	static float turnFrame = 0.0f; //âÒì]íÜÇÃÉtÉåÅ[ÉÄêîÇä«óùÇ∑ÇÈïœêî
 
@@ -105,16 +107,16 @@ void Player::Update()
 			pdirection = PLAYER_DIRECTION::PLAYER_RIGHT;
 			pstate = PLAYER_STATE::PLAYER_WALK;
 		}
-		if (Input::IsKey(DIK_UP))
-		{
-			pdirection = PLAYER_DIRECTION::PLAYER_UP;
-			pstate = PLAYER_STATE::PLAYER_WALK;
-		}
-		if (Input::IsKey(DIK_DOWN))
-		{
-			pdirection = PLAYER_DIRECTION::PLAYER_DOWN;
-			pstate = PLAYER_STATE::PLAYER_WALK;
-		}
+		//if (Input::IsKey(DIK_UP))
+		//{
+		//	pdirection = PLAYER_DIRECTION::PLAYER_UP;
+		//	pstate = PLAYER_STATE::PLAYER_WALK;
+		//}
+		//if (Input::IsKey(DIK_DOWN))
+		//{
+		//	pdirection = PLAYER_DIRECTION::PLAYER_DOWN;
+		//	pstate = PLAYER_STATE::PLAYER_WALK;
+		//}
 	}
 	if (oldDir != pdirection) {
 		//âÒì]ÇµÇ»Ç´Ç·ÇæÇÊÅB

@@ -2,6 +2,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/Model.h"
 
+class Player;
 class Text;
 //テストシーンを管理するクラス
 class TestScene : public GameObject
@@ -26,4 +27,5 @@ public:
 private:
 	Text* pText_;
 	int myScore;
+	Player* pPlayer_;
 };
