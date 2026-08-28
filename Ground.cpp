@@ -1,6 +1,7 @@
 #include "Ground.h"
 #include "Engine/Model.h"
 #include "Engine/CsvReader.h"
+#include "Food.h"
 
 
 namespace
@@ -55,6 +56,21 @@ Ground::Ground(GameObject* parent)
 		for (int y = 0; y < mapHeight_; y++)
 		{
 			objMap_[y][x] = csvData.GetValue(x, y+mapHeight_); //CSVの値をobjMap_に格納
+			if(objMap_[y][x] > 0){
+				Food* food = (Food*)Instantiate<Food>(this);
+				esaCount_++;//餌の数をカウント
+				food->SetPosition({ -9.0f + x * 2.0f, 0.0f, 9.0f - y * 2.0f });
+				if (objMap_[y][x] == 1)
+				{
+					food->SetFoodType(FoodType::FOODTYPE_NORMAL);
+					normalEsaCount_++;//通常餌の数をカウント
+				}
+				else if (objMap_[y][x] == 2)
+				{
+					food->SetFoodType(FoodType::FOODTYPE_POWER);
+					powerEsaCount_++;//パワー餌の数をカウント
+				}
+			}
 		}
 	}
 
@@ -65,9 +81,8 @@ void Ground::Initialize()
 {
 	hModel_ = Model::Load("jimen3.fbx");
 	hModelt_ = Model::Load("BrickV.fbx");
-	hEsaModel_ = Model::Load("esa.fbx");
-	hPEsaModel_ = Model::Load("Poweresa.fbx");
-
+	//hEsaModel_ = Model::Load("esa.fbx");
+	//hPEsaModel_ = Model::Load("Poweresa.fbx");
 }
 
 void Ground::Update()
@@ -86,22 +101,22 @@ void Ground::Draw()
 				Model::SetTransform(hModelt_, tr);
 				Model::Draw(hModelt_);
 			}
-			if (objMap_[j][i] == 1) {
-				Transform tr2;
-				tr2.position_ = { -9.0f + i * 2.0f, 0.0f, 9.0f - j * 2.0f };
-				tr2.scale_ = { 0.3f, 0.3f, 0.3f };
-				Model::SetTransform(hEsaModel_, tr2);
-				Model::Draw(hEsaModel_);
-			}
-			else if (objMap_[j][i] == 2)
-			{
-				static Transform tr2;
-				tr2.position_ = { -9.0f + i * 2.0f, 0.0f, 9.0f - j * 2.0f };
-				tr2.scale_ = { 0.3f, 0.3f, 0.3f };
-				tr2.rotate_.y += 1.0f;
-				Model::SetTransform(hPEsaModel_, tr2);
-				Model::Draw(hPEsaModel_);
-			}
+			//if (objMap_[j][i] == 1) {
+			//	Transform tr2;
+			//	tr2.position_ = { -9.0f + i * 2.0f, 0.0f, 9.0f - j * 2.0f };
+			//	tr2.scale_ = { 0.3f, 0.3f, 0.3f };
+			//	Model::SetTransform(hEsaModel_, tr2);
+			//	Model::Draw(hEsaModel_);
+			//}
+			//else if (objMap_[j][i] == 2)
+			//{
+			//	static Transform tr2;
+			//	tr2.position_ = { -9.0f + i * 2.0f, 0.0f, 9.0f - j * 2.0f };
+			//	tr2.scale_ = { 0.3f, 0.3f, 0.3f };
+			//	tr2.rotate_.y += 1.0f;
+			//	Model::SetTransform(hPEsaModel_, tr2);
+			//	Model::Draw(hPEsaModel_);
+			//}
 		}
 	}
 }

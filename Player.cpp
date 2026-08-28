@@ -52,7 +52,7 @@ namespace
 
 
 Player::Player(GameObject* parent)
-	:GameObject(parent), hWalkModel_(-1), hIdleModel_(-1){
+	:GameObject(parent, "Player"), hWalkModel_(-1), hIdleModel_(-1) {
 	//swordDirには、初期方向として、ローカルモデルの剣の根っこから
 	//先端までのベクトルとして（0,1,0)を代入しておく
 	//初期位置は原点
@@ -65,6 +65,9 @@ void Player::Initialize()
 	transform_.position_ = { 0.5f, 0.0, 0.5f };
 	hIdleModel_ = Model::Load("Idle.fbx");
 	Model::SetAnimFrame(hIdleModel_, 0, 117, 1.0);
+	SphereCollider* collision = new SphereCollider(XMFLOAT3(0, 0.25, 0), 0.5f);
+	AddCollider(collision);
+
 }
 
 void Player::Update()
@@ -193,5 +196,9 @@ void Player::Draw()
 
 
 void Player::Release()
+{
+}
+
+void Player::OnCollision(GameObject* pTarget)
 {
 }

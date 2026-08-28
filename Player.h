@@ -1,5 +1,6 @@
 #pragma once
 #include "Engine/GameObject.h"
+#include "Engine/SphereCollider.h"
 
 class Ground;//前方宣言
 
@@ -21,6 +22,7 @@ public:
 	void SetGround(Ground* ground) { 
 		ground_ = ground;
 	}
+	void OnCollision(GameObject* pTarget) override;
 private:
 	int hWalkModel_;//歩きアニメーションのモデルハンドル
 	int hIdleModel_;//待機アニメーションのモデルハンドル
