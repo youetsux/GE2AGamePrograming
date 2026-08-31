@@ -167,14 +167,18 @@ void Player::Update()
 	//壁オブジェクトに食い込んでたら戻す！
 	gmap = ground_->GetMapData();//マップを取得
 	//マップの座標に変換する、めり込んでたら戻す。
-	int mapX = (int)((wpos.x)  + 10)/2;
+	int mapWidth = (int)gmap[0].size();
+	int mapHeight = (int)gmap.size();
+	int mapX = (int)((wpos.x + 1) / 2);
 	int mapZ = (int)(10 - (wpos.z))/2;
-	if (gmap[mapZ][mapX] == 1)
+	if (mapX >= 0 && mapX < mapWidth && mapZ >= 0 && mapZ < mapHeight)
 	{
-		pos = pos - SPEED * move;
-		XMStoreFloat3(&transform_.position_, pos);
+		if (gmap[mapZ][mapX] == 1 && (pdirection == PLAYER_LEFT || pdirection == PLAYER_RIGHT))
+		{
+			pos = pos - SPEED * move;
+			XMStoreFloat3(&transform_.position_, pos);
+		}
 	}
-
 	//pos = XMVectorAdd(pos, SPEED*move);
 }
 

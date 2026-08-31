@@ -9,6 +9,7 @@ namespace {
 	Ground* pGround;
 	const int CAMERA_HEIGHT = 8.0f;
 	XMFLOAT3 START_POS = { 15.0f, 0.75, 0.5f };
+	const float END_POS_X = 43.0f;
 }
 
 //コンストラクタ
@@ -35,7 +36,7 @@ void TestScene::Initialize()
 //更新
 void TestScene::Update()
 {
-	if (pPlayer_->GetPosition().x > START_POS.x) {
+	if (pPlayer_->GetPosition().x > START_POS.x && pPlayer_->GetPosition().x < END_POS_X) {
 		Camera::SetPosition({ pPlayer_->GetPosition().x, pPlayer_->GetPosition().y + CAMERA_HEIGHT,-22 });
 		Camera::SetTarget({ pPlayer_->GetPosition().x, pPlayer_->GetPosition().y + CAMERA_HEIGHT,0 });
 	}
