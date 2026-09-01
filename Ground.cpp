@@ -57,7 +57,7 @@ void Ground::Draw()
 		for (int i = 0;i < mapWidth_;i++) {
 			if (mapData_[j][i] == 1) {
 				Transform tr;
-				tr.position_ = { i * BLOCK_INTERVAL_X, j * BLOCK_INTERVAL_Y, 0.0f };
+				tr.position_ = { i * BLOCK_INTERVAL_X, (mapHeight_ - 1 - j) * BLOCK_INTERVAL_Y, 0.0f };
 				Model::SetTransform(hModelt_, tr);
 				Model::Draw(hModelt_);
 			}

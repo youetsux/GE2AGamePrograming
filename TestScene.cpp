@@ -27,7 +27,7 @@ void TestScene::Initialize()
 	pPlayer_->SetGround(pGround);
 
 	Camera::SetPosition({ pPlayer_->GetPosition().x, pPlayer_->GetPosition().y + CAMERA_HEIGHT,-22 });
-	Camera::SetTarget({ pPlayer_->GetPosition().x, pPlayer_->GetPosition().y+ CAMERA_HEIGHT,0 });
+	Camera::SetTarget({ pPlayer_->GetPosition().x, pPlayer_->GetPosition().y + CAMERA_HEIGHT,0 });
 
 	pText_ = new Text;
 	pText_->Initialize();//テキストの初期化
@@ -37,8 +37,8 @@ void TestScene::Initialize()
 void TestScene::Update()
 {
 	if (pPlayer_->GetPosition().x > START_POS.x && pPlayer_->GetPosition().x < END_POS_X) {
-		Camera::SetPosition({ pPlayer_->GetPosition().x, pPlayer_->GetPosition().y + CAMERA_HEIGHT,-22 });
-		Camera::SetTarget({ pPlayer_->GetPosition().x, pPlayer_->GetPosition().y + CAMERA_HEIGHT,0 });
+		Camera::SetPosition({ pPlayer_->GetPosition().x, START_POS.y + CAMERA_HEIGHT,-22 });
+		Camera::SetTarget({ pPlayer_->GetPosition().x, START_POS.y + CAMERA_HEIGHT,0 });
 	}
 
 }

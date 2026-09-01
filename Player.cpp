@@ -16,6 +16,9 @@ namespace
 	const float TURN_FRAME = 10.0f;						//回転にかかるフレーム数
 	const float BLOCK_SIZE = 2.0f;						//1マスのワールドサイズ
 	const XMFLOAT3 START_POS = { 15.0f, 0.75f, 0.5f };	//初期位置
+	const float JUMP_POWER = 0.2f;						//ジャンプ初速
+	const float GRAVITY    = 0.01f;						//重力加速度
+	const float AIR_CONTROL = 0.5f;						//空中での入力の重み(地上比)
 
 	//enum
 	enum PLAYER_STATE
@@ -49,6 +52,9 @@ namespace
 	float turnEndAngle = 0.0f;							//回転終了時の角度
 	PLAYER_DIRECTION turnEndDirection = PLAYER_DOWN;	//回転終了時の向き
 	float currentSpeed = 0.0f;							//現在の速度
+	float turnFrame = 0.0f;								//回転中のフレーム数
+	float jumpVelocity = 0.0f;							//ジャンプ中の垂直速度
+	bool  isGrounded   = true;							//地面に接地しているか
 	std::vector<std::vector<int>> gmap;					//マップデータ
 
 	//関数
@@ -83,123 +89,142 @@ void Player::Initialize()
 }
 
 void Player::Update()
-{	
-	XMVECTOR pos = XMLoadFloat3(&transform_.position_);
+{
+	if (pstate != PLAYER_TURN) pstate = PLAYER_IDLE;
+
+	bool isBraking = HandleInput();
+
+	if (UpdateTurn()) return;
+
+	XMVECTOR pos  = XMLoadFloat3(&transform_.position_);
 	XMVECTOR move = XMVectorSet(0, 0, 0, 0);
-	float angle = 0.0f;
-	static float turnFrame = 0.0f; //回転中のフレーム数を管理する変数
 
-	if (pstate != PLAYER_STATE::PLAYER_TURN) {
-		pstate = PLAYER_STATE::PLAYER_IDLE;
-	}//回転中でなければ、状態を待機にする
-
-	PLAYER_DIRECTION oldDir = pdirection; //pdirection　<=　今の向き
-	bool isBraking = false; //逆入力ブレーキフラグ
-
-	//速度0の時だけ方向転換を受け付ける
-	if (pstate != PLAYER_STATE::PLAYER_TURN && currentSpeed == 0.0f)
+	if (pstate == PLAYER_WALK)
 	{
-		if (Input::IsKey(DIK_LEFT))
-		{
-			pdirection = PLAYER_DIRECTION::PLAYER_LEFT;
-			pstate = PLAYER_STATE::PLAYER_WALK;
-		}
-		if (Input::IsKey(DIK_RIGHT))
-		{
-			pdirection = PLAYER_DIRECTION::PLAYER_RIGHT;
-			pstate = PLAYER_STATE::PLAYER_WALK;
-		}
+		float accel = isGrounded ? ACCELERATION : ACCELERATION * AIR_CONTROL;
+		currentSpeed += accel;
+		if (currentSpeed > MAX_SPEED) currentSpeed = MAX_SPEED;
+		move = P_MOVE[pdirection];
+		transform_.rotate_.y = P_ANGLE[pdirection];
 	}
-	else if (pstate != PLAYER_STATE::PLAYER_TURN)
+	else // PLAYER_IDLE
 	{
-		if (Input::IsKey(DIK_LEFT))
+		if (currentSpeed > 0.0f)
 		{
-			if (pdirection == PLAYER_DIRECTION::PLAYER_LEFT)
-				pstate = PLAYER_STATE::PLAYER_WALK;
-			else if (pdirection == PLAYER_DIRECTION::PLAYER_RIGHT)
-				isBraking = true;
-		}
-		if (Input::IsKey(DIK_RIGHT))
-		{
-			if (pdirection == PLAYER_DIRECTION::PLAYER_RIGHT)
-				pstate = PLAYER_STATE::PLAYER_WALK;
-			else if (pdirection == PLAYER_DIRECTION::PLAYER_LEFT)
-				isBraking = true;
+			float decel = isGrounded ? (isBraking ? BRAKE : FRICTION) : FRICTION * AIR_CONTROL;
+			currentSpeed -= decel;
+			if (currentSpeed < 0.0f) currentSpeed = 0.0f;
+			move = P_MOVE[pdirection];
 		}
 	}
 
-	if (oldDir != pdirection) {
-		//速度0の時だけ回転開始
-		pstate = PLAYER_STATE::PLAYER_TURN;
+	Model::SetAnimSpeed(hWalkModel_, currentSpeed / BASE_SPEED);
+
+	pos = pos + currentSpeed * move;
+	XMStoreFloat3(&transform_.position_, pos);
+
+	UpdateJump();
+
+	ResolveWallCollision(pos, move);
+}
+
+bool Player::HandleInput()
+{
+	bool isBraking = false;
+	PLAYER_DIRECTION oldDir = pdirection;
+
+	if (pstate != PLAYER_TURN)
+	{
+		if (currentSpeed == 0.0f && isGrounded)
+		{
+			if (Input::IsKey(DIK_LEFT))  { pdirection = PLAYER_LEFT;  pstate = PLAYER_WALK; }
+			if (Input::IsKey(DIK_RIGHT)) { pdirection = PLAYER_RIGHT; pstate = PLAYER_WALK; }
+		}
+		else
+		{
+			if (Input::IsKey(DIK_LEFT))
+			{
+				if      (pdirection == PLAYER_LEFT)  pstate = PLAYER_WALK;
+				else if (pdirection == PLAYER_RIGHT) isBraking = !isGrounded ? false : true;
+			}
+			if (Input::IsKey(DIK_RIGHT))
+			{
+				if      (pdirection == PLAYER_RIGHT) pstate = PLAYER_WALK;
+				else if (pdirection == PLAYER_LEFT)  isBraking = !isGrounded ? false : true;
+			}
+		}
+	}
+
+	if (Input::IsKeyDown(DIK_SPACE) && isGrounded) { 
+		jumpVelocity = JUMP_POWER; 
+		isGrounded = false; 
+	}
+
+	if (oldDir != pdirection)
+	{
+		pstate = PLAYER_TURN;
 		turnFrame = 0.0f;
 		turnStartAngle = P_ANGLE[oldDir];
 		float diff = AdjustAngle(P_ANGLE[pdirection] - P_ANGLE[oldDir]);
 		turnEndDirection = pdirection;
 		turnEndAngle = turnStartAngle + diff;
 	}
-	//  ↑ 状態切り替えの処理
-	//　↓ 状態ごとの処理
 
-	if (pstate == PLAYER_STATE::PLAYER_TURN)
+	return isBraking;
+}
+
+bool Player::UpdateTurn()
+{
+	if (pstate != PLAYER_TURN) return false;
+
+	turnFrame += 1.0f;
+	float t = min(turnFrame / TURN_FRAME, 1.0f);
+	transform_.rotate_.y = turnStartAngle + (turnEndAngle - turnStartAngle) * t;
+
+	if (turnFrame >= TURN_FRAME)
 	{
-		turnFrame += 1.0f;
-		float t = turnFrame / TURN_FRAME; //0.0～1.0
-		if (t > 1.0f)
-		{
-			t = 1.0f;//1.0を超えないようにする(保険）
-		}
-		angle = turnStartAngle + (turnEndAngle - turnStartAngle) * t;
-		transform_.rotate_.y = angle;
-		// 30フレーム経過したら、回転終了
-		if (turnFrame >= TURN_FRAME)
-		{
-			pdirection = turnEndDirection;
-			transform_.rotate_.y = P_ANGLE[pdirection];
-			pstate = PLAYER_STATE::PLAYER_WALK;
-		}
-		return;//早期リターンで、回転中は移動しないようにする
+		pdirection = turnEndDirection;
+		transform_.rotate_.y = P_ANGLE[pdirection];
+		pstate = PLAYER_WALK;
 	}
-	else if (pstate == PLAYER_STATE::PLAYER_WALK)
+	return true;
+}
+
+void Player::UpdateJump()
+{
+	if (isGrounded)
 	{
-		//加速
-		currentSpeed += ACCELERATION;
-		if (currentSpeed > MAX_SPEED) currentSpeed = MAX_SPEED;
-		move = P_MOVE[pdirection];
-		angle = P_ANGLE[pdirection];
-		transform_.rotate_.y = angle;
-	}
-	else //PLAYER_IDLE
-	{
-		//慣性で減速（逆入力時はブレーキ）
-		if (currentSpeed > 0.0f)
-		{
-			currentSpeed -= isBraking ? BRAKE : FRICTION;
-			if (currentSpeed < 0.0f) currentSpeed = 0.0f;
-			move = P_MOVE[pdirection];
-		}
+		transform_.position_.y = START_POS.y;
+		return;
 	}
 
-	//速度に応じてアニメーションスピードを更新（BASE_SPEEDの時にanimSpeed=1.0）
-	float animSpeed = currentSpeed / BASE_SPEED;
-	Model::SetAnimSpeed(hWalkModel_, animSpeed);
+	transform_.position_.y += jumpVelocity;
+	jumpVelocity -= GRAVITY;
 
-	pos = pos + currentSpeed * move;
-	XMStoreFloat3(&transform_.position_, pos);
-	XMFLOAT3 wpos = transform_.position_;
-	//壁オブジェクトに食い込んでたら戻す！
-	gmap = ground_->GetMapData();//マップを取得
-	//マップの座標に変換する、めり込んでたら戻す。
-	int mapWidth = (int)gmap[0].size();
+	if (transform_.position_.y <= START_POS.y)
+	{
+		transform_.position_.y = START_POS.y;
+		jumpVelocity = 0.0f;
+		isGrounded   = true;
+	}
+}
+
+void Player::ResolveWallCollision(XMVECTOR& pos, const XMVECTOR& move)
+{
+	gmap = ground_->GetMapData();
+	int mapWidth  = (int)gmap[0].size();
 	int mapHeight = (int)gmap.size();
+	XMFLOAT3 wpos = transform_.position_;
 	int mapX = (int)((wpos.x + BLOCK_SIZE / 2.0f) / BLOCK_SIZE);
-	int mapZ = (int)((START_POS.z + (BLOCK_SIZE * mapHeight / 2.0f) - wpos.z) / BLOCK_SIZE);
+	int mapZ = 1; // 外壁はすべての行に存在するため固定行で参照
+
 	if (mapX >= 0 && mapX < mapWidth && mapZ >= 0 && mapZ < mapHeight)
 	{
 		if (gmap[mapZ][mapX] == 1 && (pdirection == PLAYER_LEFT || pdirection == PLAYER_RIGHT))
 		{
 			pos = pos - currentSpeed * move;
 			XMStoreFloat3(&transform_.position_, pos);
-			currentSpeed = 0.0f; //壁に当たったら速度リセット
+			currentSpeed = 0.0f;
 		}
 	}
 }
