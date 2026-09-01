@@ -61,7 +61,6 @@ void Food::OnCollision(GameObject* pTarget)
 	TestScene* testScene = dynamic_cast<TestScene*>(GetParent()->GetParent());
 	testScene->AddScore(score_);//ƒXƒRƒA‚ğ‰ÁZ
 	Ground* ground = dynamic_cast<Ground*>(FindObject("Ground"));
-	ground->DecEsaCount(type_);//‰a‚Ì”‚ğŒ¸‚ç‚·
 	if (pTarget->GetObjectName() == "Player")
 	{
 		KillMe();

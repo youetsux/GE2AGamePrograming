@@ -1,7 +1,6 @@
 #pragma once
 #include "Engine/GameObject.h"
 #include <vector>
-#include <tuple>
 
 class Ground :
     public GameObject
@@ -19,27 +18,11 @@ public:
 	void Draw() override;
 	//ŠJ•ú
 	void Release() override;
-	std::tuple<int,int,int> GetEsaCount() { return std::make_tuple(esaCount_, normalEsaCount_, powerEsaCount_); }
-	void DecEsaCount(int type) {
-		esaCount_--;
-		if (type == 0) {
-			normalEsaCount_--;
-		}
-		else if (type == 1) {
-			powerEsaCount_--;
-		}
-	}
 private:
 	int hModel_;
 	int hModelt_;
-	int hEsaModel_;
-	int hPEsaModel_;
 	std::vector<std::vector<int>> mapData_;
-	std::vector<std::vector<int>> objMap_;
 	int mapWidth_;
 	int mapHeight_;
-	int esaCount_;
-	int normalEsaCount_;
-	int powerEsaCount_;
 };
 

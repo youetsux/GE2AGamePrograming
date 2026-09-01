@@ -107,16 +107,7 @@ void Player::Update()
 			pdirection = PLAYER_DIRECTION::PLAYER_RIGHT;
 			pstate = PLAYER_STATE::PLAYER_WALK;
 		}
-		//if (Input::IsKey(DIK_UP))
-		//{
-		//	pdirection = PLAYER_DIRECTION::PLAYER_UP;
-		//	pstate = PLAYER_STATE::PLAYER_WALK;
-		//}
-		//if (Input::IsKey(DIK_DOWN))
-		//{
-		//	pdirection = PLAYER_DIRECTION::PLAYER_DOWN;
-		//	pstate = PLAYER_STATE::PLAYER_WALK;
-		//}
+
 	}
 	if (oldDir != pdirection) {
 		//‰ñ“]‚µ‚È‚«‚á‚¾‚æB
@@ -134,10 +125,6 @@ void Player::Update()
 
 	if (pstate == PLAYER_STATE::PLAYER_TURN)
 	{
-		////‰ñ“]’†‚Ìˆ—
-		//oldDir@¨@¡‚ÌŠp“x 
-		//pdirection -> –Ú•WŠp“x
-		////‚R‚OƒtƒŒ[ƒ€‚Å‰ñ“]‚·‚é‚æ‚¤‚É‚·‚é
 		turnFrame += 1.0f;
 		float t = turnFrame / TURN_FRAME; //0.0`1.0
 		if (t > 1.0f)
@@ -179,14 +166,10 @@ void Player::Update()
 			XMStoreFloat3(&transform_.position_, pos);
 		}
 	}
-	//pos = XMVectorAdd(pos, SPEED*move);
 }
 
 void Player::Draw()
 {
-	//transform_.scale_ = { 0.01,0.01,0.01 };
-	//transform_.position_ = { 0, 0.0, 0 };
-
 	if (pstate == PLAYER_STATE::PLAYER_IDLE)
 	{
 		Model::SetTransform(hIdleModel_, transform_);

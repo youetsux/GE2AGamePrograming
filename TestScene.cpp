@@ -57,13 +57,7 @@ void TestScene::Draw()
 	sprintf(buffer, "%010d", myScore);
 	scrText = "SCORE:" + std::string(buffer);
 	pText_->Draw(500, 50, scrText.c_str());
-	int esaCount, normalEsaCount, powerEsaCount;
-	std::tuple<int, int, int> esa = pGround->GetEsaCount();
-	esaCount = std::get<0>(esa);
-	normalEsaCount = std::get<1>(esa);
-	powerEsaCount = std::get<2>(esa);
-	std::string EsaString = "NORMAL ESA:" + std::to_string(normalEsaCount) + " POWER ESA:" + std::to_string(powerEsaCount);
-	pText_->Draw(500, 100, EsaString.c_str());
+	pText_->Draw(500, 100, scrText.c_str());
 }
 
 //ŠJ•ú
