@@ -7,14 +7,24 @@
 
 namespace
 {
+	//定数
+	const float MAX_SPEED = 0.2f;						//最大移動速度
+	const float BASE_SPEED = 0.1f;						//アニメ速度1.0の基準速度
+	const float ACCELERATION = 0.005f;					//加速度
+	const float FRICTION = 0.008f;						//摩擦（減速度）
+	const float BRAKE = 0.02f;							//逆入力ブレーキ
+	const float TURN_FRAME = 10.0f;						//回転にかかるフレーム数
+	const float BLOCK_SIZE = 2.0f;						//1マスのワールドサイズ
+	const XMFLOAT3 START_POS = { 15.0f, 0.75f, 0.5f };	//初期位置
+
+	//enum
 	enum PLAYER_STATE
 	{
 		PLAYER_IDLE,
 		PLAYER_WALK,
-		PLAYER_TURN, //回転中
-		PLAYER_STATE_MAX //状態の数
+		PLAYER_TURN,		//回転中
+		PLAYER_STATE_MAX	//状態の数
 	};
-	PLAYER_STATE pstate = PLAYER_STATE::PLAYER_IDLE; //プレイヤーの状態を管理する変数
 
 	enum PLAYER_DIRECTION
 	{
@@ -25,17 +35,23 @@ namespace
 		PLAYER_DIRECTION_MAX //方向の数
 	};
 
-	PLAYER_DIRECTION pdirection = PLAYER_DOWN; //プレイヤーの向きを管理する変数
-	float P_ANGLE[4] = { 180.0f, 0.0f, 90.0f, 270.0f }; //プレイヤーの向きに応じた角度を格納する配列
+	//向きに応じたテーブル
+	float P_ANGLE[4] = { 180.0f, 0.0f, 90.0f, 270.0f };	//プレイヤーの向きに応じた角度
 	XMVECTOR P_MOVE[4] = { XMVectorSet(0, 0, 1, 0),
-		                   XMVectorSet(0, 0, -1, 0),
-		                   XMVectorSet(-1, 0, 0, 0), 
-		                   XMVectorSet(1, 0, 0, 0) }; //プレイヤーの向きに応じた移動ベクトルを格納する配列
-	float TURN_FRAME = 10.0f; //回転にかかるフレーム数
+						   XMVectorSet(0, 0, -1, 0),
+						   XMVectorSet(-1, 0, 0, 0),
+						   XMVectorSet(1, 0, 0, 0) };		//プレイヤーの向きに応じた移動ベクトル
 
-	float turnStartAngle = 0.0f; //回転開始時の角度を管理する変数
-	float turnEndAngle = 0.0f; //回転終了時の角度を管理する変数
-	PLAYER_DIRECTION turnEndDirection = PLAYER_DOWN; //回転終了時の向きを管理する変数
+	//状態変数
+	PLAYER_STATE pstate = PLAYER_STATE::PLAYER_IDLE;	//プレイヤーの状態
+	PLAYER_DIRECTION pdirection = PLAYER_DOWN;			//プレイヤーの向き
+	float turnStartAngle = 0.0f;						//回転開始時の角度
+	float turnEndAngle = 0.0f;							//回転終了時の角度
+	PLAYER_DIRECTION turnEndDirection = PLAYER_DOWN;	//回転終了時の向き
+	float currentSpeed = 0.0f;							//現在の速度
+	std::vector<std::vector<int>> gmap;					//マップデータ
+
+	//関数
 	float AdjustAngle(float angle) {
 		if(angle >= 180)
 		{
@@ -47,17 +63,11 @@ namespace
 		}
 		return angle;
 	}
-	std::vector<std::vector<int>> gmap;
-	XMFLOAT3 START_POS = { 15.0f, 0.75, 0.5f };
-
 }
 
 
 Player::Player(GameObject* parent)
 	:GameObject(parent, "Player"), hWalkModel_(-1), hIdleModel_(-1) {
-	//swordDirには、初期方向として、ローカルモデルの剣の根っこから
-	//先端までのベクトルとして（0,1,0)を代入しておく
-	//初期位置は原点
 }
 
 void Player::Initialize()
@@ -73,19 +83,9 @@ void Player::Initialize()
 }
 
 void Player::Update()
-{
-	//transform_.rotate_.y +=1;
-	//static float angle = 0.0;
-	//angle = angle + 0.3f;
-	//XMMATRIX scale = XMMatrixScaling(1.0f, 1.0f, 1.0f);
-	//XMMATRIX rotateX = XMMatrixRotationX(XMConvertToRadians(angle));
-	//XMMATRIX rotate = XMMatrixRotationY(XMConvertToRadians(angle));
-	//XMMATRIX translate = XMMatrixTranslation(1.0f, 0.0f, 0.0f);
-	//SetWorldMatrix(scale *  rotate * translate);
-	
+{	
 	XMVECTOR pos = XMLoadFloat3(&transform_.position_);
 	XMVECTOR move = XMVectorSet(0, 0, 0, 0);
-	const float SPEED = 0.1f;
 	float angle = 0.0f;
 	static float turnFrame = 0.0f; //回転中のフレーム数を管理する変数
 
@@ -93,9 +93,11 @@ void Player::Update()
 		pstate = PLAYER_STATE::PLAYER_IDLE;
 	}//回転中でなければ、状態を待機にする
 
-	PLAYER_DIRECTION oldDir = pdirection; //pdirection　<=　今の向き 
+	PLAYER_DIRECTION oldDir = pdirection; //pdirection　<=　今の向き
+	bool isBraking = false; //逆入力ブレーキフラグ
 
-	if (pstate != PLAYER_STATE::PLAYER_TURN)
+	//速度0の時だけ方向転換を受け付ける
+	if (pstate != PLAYER_STATE::PLAYER_TURN && currentSpeed == 0.0f)
 	{
 		if (Input::IsKey(DIK_LEFT))
 		{
@@ -107,17 +109,32 @@ void Player::Update()
 			pdirection = PLAYER_DIRECTION::PLAYER_RIGHT;
 			pstate = PLAYER_STATE::PLAYER_WALK;
 		}
-
 	}
+	else if (pstate != PLAYER_STATE::PLAYER_TURN)
+	{
+		if (Input::IsKey(DIK_LEFT))
+		{
+			if (pdirection == PLAYER_DIRECTION::PLAYER_LEFT)
+				pstate = PLAYER_STATE::PLAYER_WALK;
+			else if (pdirection == PLAYER_DIRECTION::PLAYER_RIGHT)
+				isBraking = true;
+		}
+		if (Input::IsKey(DIK_RIGHT))
+		{
+			if (pdirection == PLAYER_DIRECTION::PLAYER_RIGHT)
+				pstate = PLAYER_STATE::PLAYER_WALK;
+			else if (pdirection == PLAYER_DIRECTION::PLAYER_LEFT)
+				isBraking = true;
+		}
+	}
+
 	if (oldDir != pdirection) {
-		//回転しなきゃだよ。
+		//速度0の時だけ回転開始
 		pstate = PLAYER_STATE::PLAYER_TURN;
-		turnFrame = 0.0f;//回転中のフレーム数をリセット
-		turnStartAngle = P_ANGLE[oldDir];//げんざいのほうこうから
+		turnFrame = 0.0f;
+		turnStartAngle = P_ANGLE[oldDir];
 		float diff = AdjustAngle(P_ANGLE[pdirection] - P_ANGLE[oldDir]);
-		//diffが正の値なら、右回転、負の値なら左回転
-		turnEndDirection = pdirection;//入力方向に３０フレームで回転する
-		//回転終了時の角度を計算する
+		turnEndDirection = pdirection;
 		turnEndAngle = turnStartAngle + diff;
 	}
 	//  ↑ 状態切り替えの処理
@@ -141,14 +158,32 @@ void Player::Update()
 			pstate = PLAYER_STATE::PLAYER_WALK;
 		}
 		return;//早期リターンで、回転中は移動しないようにする
-	}else if (pstate != PLAYER_STATE::PLAYER_IDLE)
+	}
+	else if (pstate == PLAYER_STATE::PLAYER_WALK)
 	{
+		//加速
+		currentSpeed += ACCELERATION;
+		if (currentSpeed > MAX_SPEED) currentSpeed = MAX_SPEED;
 		move = P_MOVE[pdirection];
 		angle = P_ANGLE[pdirection];
 		transform_.rotate_.y = angle;
 	}
+	else //PLAYER_IDLE
+	{
+		//慣性で減速（逆入力時はブレーキ）
+		if (currentSpeed > 0.0f)
+		{
+			currentSpeed -= isBraking ? BRAKE : FRICTION;
+			if (currentSpeed < 0.0f) currentSpeed = 0.0f;
+			move = P_MOVE[pdirection];
+		}
+	}
 
-	pos = pos + SPEED * move;
+	//速度に応じてアニメーションスピードを更新（BASE_SPEEDの時にanimSpeed=1.0）
+	float animSpeed = currentSpeed / BASE_SPEED;
+	Model::SetAnimSpeed(hWalkModel_, animSpeed);
+
+	pos = pos + currentSpeed * move;
 	XMStoreFloat3(&transform_.position_, pos);
 	XMFLOAT3 wpos = transform_.position_;
 	//壁オブジェクトに食い込んでたら戻す！
@@ -156,14 +191,15 @@ void Player::Update()
 	//マップの座標に変換する、めり込んでたら戻す。
 	int mapWidth = (int)gmap[0].size();
 	int mapHeight = (int)gmap.size();
-	int mapX = (int)((wpos.x + 1) / 2);
-	int mapZ = (int)(10 - (wpos.z))/2;
+	int mapX = (int)((wpos.x + BLOCK_SIZE / 2.0f) / BLOCK_SIZE);
+	int mapZ = (int)((START_POS.z + (BLOCK_SIZE * mapHeight / 2.0f) - wpos.z) / BLOCK_SIZE);
 	if (mapX >= 0 && mapX < mapWidth && mapZ >= 0 && mapZ < mapHeight)
 	{
 		if (gmap[mapZ][mapX] == 1 && (pdirection == PLAYER_LEFT || pdirection == PLAYER_RIGHT))
 		{
-			pos = pos - SPEED * move;
+			pos = pos - currentSpeed * move;
 			XMStoreFloat3(&transform_.position_, pos);
+			currentSpeed = 0.0f; //壁に当たったら速度リセット
 		}
 	}
 }

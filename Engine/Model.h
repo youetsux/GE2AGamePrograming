@@ -44,6 +44,10 @@ namespace Model
 			endFrame = end;
 			animSpeed = speed;
 		}
+		void SetAnimSpeed(float speed)
+		{
+			animSpeed = speed;
+		}
 	};
 
 
@@ -74,6 +78,7 @@ namespace Model
 	//引数：endFrame	終了フレーム
 	//引数：animSpeed	アニメーション速度
 	void SetAnimFrame(int handle, int startFrame, int endFrame, float animSpeed);
+	void SetAnimSpeed(int handle, float animSpeed);
 
 	//現在のアニメーションのフレームを取得
 	int GetAnimFrame(int handle);
