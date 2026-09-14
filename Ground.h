@@ -11,7 +11,7 @@ public:
 	Ground(GameObject* parent);
 	//‰Šú‰»
 	void Initialize() override;
-	std::vector<std::vector<int>> GetMapData() { return mapData_; }
+	const std::vector<std::vector<int>> &GetMapData() const { return mapData_; }
 	//XV
 	void Update() override;
 	//•`‰æ
