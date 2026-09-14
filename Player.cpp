@@ -4,6 +4,7 @@
 #include "TestScene.h"
 #include "Engine/Input.h"
 #include "Ground.h"
+#include <cmath>
 
 namespace
 {
@@ -16,9 +17,10 @@ namespace
 	const float FRICTION = 0.008f;			// 入力を離したときの減速度
 	const float BRAKE = 0.02f;				// 進行方向と逆入力したときの減速度
 	const float TURN_FRAME = 10.0f;			// 方向転換にかけるフレーム数
-	const float BLOCK_SIZE = 2.0f;			// マップ1マス分のワールドサイズ
+	const float BLOCK_INTERVAL_X = 2.0f;			// マップ1マス分のワールドサイズ
 
 	// プレイヤーの初期位置
+	// このY座標を、地面に立っているときの高さとして使用する
 	const XMFLOAT3 START_POS = { 15.0f, 0.75f, 0.5f };
 
 	// ------------------------------------------------------------
@@ -28,10 +30,61 @@ namespace
 	const float GRAVITY = 0.01f;			// 1フレームごとに減少する垂直速度
 	const float AIR_CONTROL = 0.5f;			// 空中での加速・減速の強さ（地上比）
 
+	// ブロックの配置間隔・水平寸法・ゲーム上の歩行面。
+	const float BLOCK_INTERVAL_Y = 1.0f;
+	const float BLOCK_HALF_WIDTH = 0.99375f;
+	const float BLOCK_HALF_DEPTH = 0.98750f;
+	const float BLOCK_SURFACE_HEIGHT = 0.75f;
+
+	// プレイヤーの判定寸法。原点を足元として扱う。
+	const float PLAYER_FOOT_OFFSET = 0.0f;
+	// Walking.fbx の基準形状（高さ約3.765）を基にした固定身長。
+	const float PLAYER_HEIGHT = 3.75f;
+	const float PLAYER_HALF_WIDTH = 0.4f; // 調整用。全幅0.8
+	const float CONTACT_EPSILON = 0.0001f;
+	const float WALL_WALK_ANIM_SPEED = 1.0f; // 壁押し中の歩行再生速度
+
+	struct CollisionRect
+	{
+		float left, right, bottom, top;
+	};
+
+	CollisionRect MakePlayerRect(const XMFLOAT3& position)
+	{
+		const float foot = position.y - PLAYER_FOOT_OFFSET;
+		return { position.x - PLAYER_HALF_WIDTH,
+			position.x + PLAYER_HALF_WIDTH, foot, foot + PLAYER_HEIGHT };
+	}
+
+	CollisionRect MakeBlockRect(int row, int col, int mapHeight)
+	{
+		const float x = col * BLOCK_INTERVAL_X;
+		const float y = (mapHeight - 1 - row) * BLOCK_INTERVAL_Y;
+		return { x - BLOCK_HALF_WIDTH, x + BLOCK_HALF_WIDTH,
+			y, y + BLOCK_SURFACE_HEIGHT };
+	}
+
+	bool OverlapX(const CollisionRect& a, const CollisionRect& b)
+	{
+		return a.right > b.left + CONTACT_EPSILON &&
+			a.left < b.right - CONTACT_EPSILON;
+	}
+
+	bool OverlapY(const CollisionRect& a, const CollisionRect& b)
+	{
+		return a.top > b.bottom + CONTACT_EPSILON &&
+			a.bottom < b.top - CONTACT_EPSILON;
+	}
+
+	bool IsInBlockLane(float z)
+	{
+		return z >= -BLOCK_HALF_DEPTH && z <= BLOCK_HALF_DEPTH;
+	}
+
 	// ------------------------------------------------------------
 	// プレイヤーの向きに対応する角度
 	//
-	// PLAYER_DIRECTION の並びと同じ順番にしている
+	// PLAYER_DIRECTION の並びと同じ順番
 	// UP / DOWN / LEFT / RIGHT
 	// ------------------------------------------------------------
 	const float P_ANGLE[4] =
@@ -44,8 +97,6 @@ namespace
 
 	// ------------------------------------------------------------
 	// プレイヤーの向きに対応する移動ベクトル
-	//
-	// P_ANGLE と同様に PLAYER_DIRECTION の並びに対応している
 	// ------------------------------------------------------------
 	const XMVECTOR P_MOVE[4] =
 	{
@@ -59,8 +110,8 @@ namespace
 	// 角度差を -180度 ～ 180度 の範囲に補正する
 	//
 	// 例：
-	//   270度回転する代わりに -90度回転させることで、
-	//   常に近い方向へ回転できるようにする
+	// 270度回転する代わりに -90度回転することで、
+	// 常に近い方向へ回転する
 	// ------------------------------------------------------------
 	float AdjustAngle(float angle)
 	{
@@ -80,13 +131,12 @@ namespace
 
 // ------------------------------------------------------------
 // コンストラクタ
-//
-// プレイヤーが持つ状態変数を初期化する
 // ------------------------------------------------------------
 Player::Player(GameObject* parent)
 	: GameObject(parent, "Player"),
 	hWalkModel_(-1),
 	hIdleModel_(-1),
+	ground_(nullptr),
 	pstate_(PLAYER_IDLE),
 	pdirection_(PLAYER_DOWN),
 	turnStartAngle_(0.0f),
@@ -95,15 +145,12 @@ Player::Player(GameObject* parent)
 	currentSpeed_(0.0f),
 	turnFrame_(0.0f),
 	jumpVelocity_(0.0f),
-	isGrounded_(true),
-	ground_(nullptr)
+	isGrounded_(true)
 {}
 
 
 // ------------------------------------------------------------
 // 初期化
-//
-// モデル、アニメーション、初期位置、コライダーを設定する
 // ------------------------------------------------------------
 void Player::Initialize()
 {
@@ -133,34 +180,27 @@ void Player::Initialize()
 // 2. 方向転換
 // 3. 水平方向の移動
 // 4. 壁との衝突処理
-// 5. ジャンプ・重力処理
-//
-// の順番で処理する
+// 5. ジャンプ・着地・重力処理
 // ------------------------------------------------------------
 void Player::Update()
 {
 	// 方向転換中でなければ、いったん待機状態に戻す
-	// この後 HandleInput() で移動入力があれば WALK に変わる
+	// HandleInput() で移動入力があれば WALK に変化する
 	if (pstate_ != PLAYER_TURN)
 	{
 		pstate_ = PLAYER_IDLE;
 	}
 
-	// 入力を調べる
-	// 進行方向と逆方向が入力されていれば true が返る
 	bool isBraking = HandleInput();
 
-	// 方向転換中は、そのフレームでは通常の移動処理を行わない
+	// 方向転換中は通常の移動処理を行わない
 	if (UpdateTurn())
 	{
+		UpdateJump();
 		return;
 	}
 
-	// 現在位置を DirectXMath のベクトルとして取得
 	XMVECTOR pos = XMLoadFloat3(&transform_.position_);
-
-	// このフレームで進む方向
-	// 入力がなければゼロベクトル
 	XMVECTOR move = XMVectorSet(0, 0, 0, 0);
 
 	// --------------------------------------------------------
@@ -168,23 +208,19 @@ void Player::Update()
 	// --------------------------------------------------------
 	if (pstate_ == PLAYER_WALK)
 	{
-		// 空中では地上より加速を弱くする
+		// 空中では加速を弱くする
 		float accel = isGrounded_
 			? ACCELERATION
 			: ACCELERATION * AIR_CONTROL;
 
 		currentSpeed_ += accel;
 
-		// 最大速度を超えないようにする
 		if (currentSpeed_ > MAX_SPEED)
 		{
 			currentSpeed_ = MAX_SPEED;
 		}
 
-		// 現在向いている方向へ移動する
 		move = P_MOVE[pdirection_];
-
-		// モデルの向きも移動方向に合わせる
 		transform_.rotate_.y = P_ANGLE[pdirection_];
 	}
 
@@ -193,16 +229,13 @@ void Player::Update()
 	// --------------------------------------------------------
 	else
 	{
-		// 慣性で動いている間は徐々に減速する
 		if (currentSpeed_ > 0.0f)
 		{
 			float decel;
 
 			if (isGrounded_)
 			{
-				// 地上では、
-				// 逆方向入力中なら強いブレーキ、
-				// 入力なしなら通常の摩擦で減速する
+				// 逆方向入力なら強く減速する
 				decel = isBraking ? BRAKE : FRICTION;
 			}
 			else
@@ -213,25 +246,15 @@ void Player::Update()
 
 			currentSpeed_ -= decel;
 
-			// 速度がマイナスにならないようにする
 			if (currentSpeed_ < 0.0f)
 			{
 				currentSpeed_ = 0.0f;
 			}
 
-			// 入力を離しても、減速中はこれまでの方向へ進み続ける
+			// 入力を離しても、減速中は今までの方向へ進む
 			move = P_MOVE[pdirection_];
 		}
 	}
-
-	// 移動速度に応じて歩行アニメーション速度も変える
-	//
-	// currentSpeed_ == BASE_SPEED のとき
-	// アニメーション速度は 1.0 になる
-	Model::SetAnimSpeed(
-		hWalkModel_,
-		currentSpeed_ / BASE_SPEED
-	);
 
 	// --------------------------------------------------------
 	// 水平方向の移動
@@ -239,12 +262,21 @@ void Player::Update()
 	pos = pos + currentSpeed_ * move;
 	XMStoreFloat3(&transform_.position_, pos);
 
-	// 移動後の位置が壁に入っていないか調べる
-	// 壁に入っていた場合は水平方向の移動を取り消す
+	// 衝突で速度がゼロになったかを、解決前後で確認する。
+	const float speedBeforeCollision = currentSpeed_;
 	ResolveWallCollision(pos, move);
+	const bool blockedByWall =
+		speedBeforeCollision > 0.0f && currentSpeed_ == 0.0f;
 
-	// 水平方向の処理が終わってから、
-	// ジャンプ・重力によるY方向の移動を行う
+	// 実際の移動速度と、壁に向かって歩くアニメの速度を分離する。
+	// 入力を離した場合や逆方向へのブレーキ中は固定再生しない。
+	const bool pushingWall = blockedByWall && pstate_ == PLAYER_WALK;
+	const float walkAnimSpeed = pushingWall
+		? WALL_WALK_ANIM_SPEED
+		: currentSpeed_ / BASE_SPEED;
+	Model::SetAnimSpeed(hWalkModel_, walkAnimSpeed);
+
+	// ジャンプ・重力・ブロックへの着地
 	UpdateJump();
 }
 
@@ -252,27 +284,21 @@ void Player::Update()
 // ------------------------------------------------------------
 // 入力処理
 //
-// 左右移動、逆方向入力によるブレーキ、ジャンプを処理する
-//
 // 戻り値：
-//   true  = 進行方向と逆方向の入力中
-//   false = 通常状態
+// true  = 進行方向と逆方向を入力している
+// false = 通常
 // ------------------------------------------------------------
 bool Player::HandleInput()
 {
 	bool isBraking = false;
 
 	// 入力前の向きを保存しておく
-	// 入力後に向きが変わったかを判定するために使用する
 	PLAYER_DIRECTION oldDir = pdirection_;
 
-	// 方向転換中は新しい左右入力を受け付けない
 	if (pstate_ != PLAYER_TURN)
 	{
 		// ----------------------------------------------------
-		// 完全に停止していて、地上にいる場合
-		//
-		// 左右入力された方向へすぐに向きを変更する
+		// 完全停止中
 		// ----------------------------------------------------
 		if (currentSpeed_ == 0.0f && isGrounded_)
 		{
@@ -290,40 +316,32 @@ bool Player::HandleInput()
 		}
 
 		// ----------------------------------------------------
-		// すでに移動中、または空中にいる場合
+		// 移動中または空中
 		// ----------------------------------------------------
 		else
 		{
 			if (Input::IsKey(DIK_LEFT))
 			{
-				// 左へ進んでいる状態で左入力
-				// →そのまま移動を続ける
 				if (pdirection_ == PLAYER_LEFT)
 				{
 					pstate_ = PLAYER_WALK;
 				}
-
-				// 右へ進んでいる状態で左入力
-				// →地上ならブレーキをかける
 				else if (pdirection_ == PLAYER_RIGHT)
 				{
+					// 地上で逆方向入力したときだけブレーキ
 					isBraking = isGrounded_;
 				}
 			}
 
 			if (Input::IsKey(DIK_RIGHT))
 			{
-				// 右へ進んでいる状態で右入力
-				// →そのまま移動を続ける
 				if (pdirection_ == PLAYER_RIGHT)
 				{
 					pstate_ = PLAYER_WALK;
 				}
-
-				// 左へ進んでいる状態で右入力
-				// →地上ならブレーキをかける
 				else if (pdirection_ == PLAYER_LEFT)
 				{
+					// 地上で逆方向入力したときだけブレーキ
 					isBraking = isGrounded_;
 				}
 			}
@@ -332,8 +350,6 @@ bool Player::HandleInput()
 
 	// --------------------------------------------------------
 	// ジャンプ開始
-	//
-	// Spaceを押した瞬間、かつ地上にいる場合だけジャンプする
 	// --------------------------------------------------------
 	if (Input::IsKeyDown(DIK_SPACE) && isGrounded_)
 	{
@@ -342,27 +358,20 @@ bool Player::HandleInput()
 	}
 
 	// --------------------------------------------------------
-	// 入力によって向きが変わった場合は方向転換を開始する
+	// 向きが変わったら方向転換を開始
 	// --------------------------------------------------------
 	if (oldDir != pdirection_)
 	{
 		pstate_ = PLAYER_TURN;
 
-		// 方向転換の経過フレームをリセット
 		turnFrame_ = 0.0f;
-
-		// 回転開始時の角度
 		turnStartAngle_ = P_ANGLE[oldDir];
 
-		// 回転量を -180～180度に補正し、
-		// 最短方向へ回転させる
+		// 最短方向へ回転するため角度差を補正する
 		float diff =
 			AdjustAngle(P_ANGLE[pdirection_] - P_ANGLE[oldDir]);
 
-		// 回転完了後の向き
 		turnEndDirection_ = pdirection_;
-
-		// 補間に使用する終了角度
 		turnEndAngle_ = turnStartAngle_ + diff;
 	}
 
@@ -373,11 +382,7 @@ bool Player::HandleInput()
 // ------------------------------------------------------------
 // 方向転換処理
 //
-// TURN_FRAME フレームかけて開始角度から終了角度へ回転する
-//
-// 戻り値：
-//   true  = 現在方向転換中
-//   false = 方向転換していない
+// TURN_FRAME フレームかけて回転する
 // ------------------------------------------------------------
 bool Player::UpdateTurn()
 {
@@ -386,26 +391,23 @@ bool Player::UpdateTurn()
 		return false;
 	}
 
-	// 方向転換開始からの経過フレーム
 	turnFrame_ += 1.0f;
 
-	// 0.0 ～ 1.0 の補間率を求める
+	// 0.0 ～ 1.0 の補間率
 	float t = min(turnFrame_ / TURN_FRAME, 1.0f);
 
-	// 開始角度から終了角度まで線形補間する
 	transform_.rotate_.y =
 		turnStartAngle_
 		+ (turnEndAngle_ - turnStartAngle_) * t;
 
-	// 指定フレーム数に到達したら方向転換終了
+	// 方向転換終了
 	if (turnFrame_ >= TURN_FRAME)
 	{
 		pdirection_ = turnEndDirection_;
 
-		// 補間誤差が残らないように最終角度を設定する
+		// 補間誤差が残らないよう最終角度を設定する
 		transform_.rotate_.y = P_ANGLE[pdirection_];
 
-		// 回転後は歩行状態へ戻す
 		pstate_ = PLAYER_WALK;
 	}
 
@@ -414,39 +416,106 @@ bool Player::UpdateTurn()
 
 
 // ------------------------------------------------------------
-// ジャンプ・重力処理
+// ジャンプ・重力・ブロックへの着地処理
 //
-// jumpVelocity_ をY座標に加算し、
-// 毎フレーム GRAVITY 分だけ下向きに加速させる
+// 落下中は、
+// 「前フレームの足位置」と「現在の足位置」の間で
+// ブロック上面を通過したかを調べる。
+//
+// そのため、1フレームの落下量が大きくても
+// ブロックを飛び越えにくい。
 // ------------------------------------------------------------
+// Y方向：接地維持・上面への着地・下面への頭突き
 void Player::UpdateJump()
 {
-	// 地上にいる場合はY座標を地面の高さに固定する
+	if (ground_ == nullptr)
+		return;
+
+	const auto& gmap = ground_->GetMapData();
+	const int mapHeight = static_cast<int>(gmap.size());
+	const bool inLane = IsInBlockLane(transform_.position_.z);
+	const CollisionRect before = MakePlayerRect(transform_.position_);
+
 	if (isGrounded_)
 	{
-		transform_.position_.y = START_POS.y;
-		return;
+		// 既存仕様の常設床。穴を作る場合はこの床もマップで管理する。
+		bool supported = transform_.position_.y <= START_POS.y + CONTACT_EPSILON;
+		float supportY = START_POS.y;
+		if (inLane)
+		{
+			for (int row = 0; row < mapHeight; ++row)
+			{
+				for (int col = 0; col < static_cast<int>(gmap[row].size()); ++col)
+				{
+					if (gmap[row][col] != 1) continue;
+					const CollisionRect block = MakeBlockRect(row, col, mapHeight);
+					if (OverlapX(before, block) &&
+						std::fabs(before.bottom - block.top) <= CONTACT_EPSILON)
+					{
+						supported = true;
+						supportY = block.top + PLAYER_FOOT_OFFSET;
+					}
+				}
+			}
+		}
+		if (supported)
+		{
+			transform_.position_.y = supportY;
+			jumpVelocity_ = 0.0f;
+			return;
+		}
+		isGrounded_ = false;
+		jumpVelocity_ = 0.0f;
 	}
 
-	// 現在の垂直速度だけ上下方向へ移動する
-	transform_.position_.y += jumpVelocity_;
-
-	// 重力によって垂直速度を毎フレーム減らす
-	//
-	// 上昇中：
-	//   正の速度が徐々に0へ近づく
-	//
-	// 落下中：
-	//   速度が負になり下方向へ移動する
+	const float dy = jumpVelocity_;
+	transform_.position_.y += dy;
 	jumpVelocity_ -= GRAVITY;
+	const CollisionRect after = MakePlayerRect(transform_.position_);
+	float resolvedY = transform_.position_.y;
+	bool hit = false;
 
-	// 地面の高さまで落ちたら着地
-	if (transform_.position_.y <= START_POS.y)
+	// 移動前後で面を跨いだかを調べ、最初に接触する面で止める。
+	if (inLane)
 	{
-		transform_.position_.y = START_POS.y;
+		for (int row = 0; row < mapHeight; ++row)
+		{
+			for (int col = 0; col < static_cast<int>(gmap[row].size()); ++col)
+			{
+				if (gmap[row][col] != 1) continue;
+				const CollisionRect block = MakeBlockRect(row, col, mapHeight);
+				if (!OverlapX(after, block)) continue;
 
+				if (dy <= 0.0f && before.bottom >= block.top - CONTACT_EPSILON &&
+					after.bottom <= block.top)
+				{
+					const float y = block.top + PLAYER_FOOT_OFFSET;
+					if (!hit || y > resolvedY) resolvedY = y;
+					hit = true;
+				}
+				else if (dy > 0.0f && before.top <= block.bottom + CONTACT_EPSILON &&
+					after.top >= block.bottom)
+				{
+					const float y = block.bottom - PLAYER_HEIGHT + PLAYER_FOOT_OFFSET;
+					if (!hit || y < resolvedY) resolvedY = y;
+					hit = true;
+				}
+			}
+		}
+	}
+
+	// 常設床も着地候補に含める。
+	if (dy <= 0.0f && resolvedY <= START_POS.y)
+	{
+		resolvedY = START_POS.y;
+		hit = true;
+	}
+	transform_.position_.y = resolvedY;
+	if (hit)
+	{
 		jumpVelocity_ = 0.0f;
-		isGrounded_ = true;
+		// 頭突きでは接地させない。次の更新から重力で落下する。
+		isGrounded_ = dy <= 0.0f;
 	}
 }
 
@@ -454,69 +523,65 @@ void Player::UpdateJump()
 // ------------------------------------------------------------
 // 壁との衝突処理
 //
-// 現在位置からマップ上のマスを求め、
-// 壁のマスに入っていた場合は直前の水平移動を取り消す
+// ブロックより低い位置にいるときだけ、
+// ブロックを横方向の壁として扱う。
+//
+// ブロック上面より高ければ、その上を移動できる。
 // ------------------------------------------------------------
-void Player::ResolveWallCollision(
-	XMVECTOR& pos,
-	const XMVECTOR& move)
+// X方向：移動前後で左右の面を跨ぐかを判定
+void Player::ResolveWallCollision(XMVECTOR& pos, const XMVECTOR& move)
 {
-	// Ground が持つマップデータを参照する
-	// コピーせず、そのまま利用する
+	if (ground_ == nullptr || !IsInBlockLane(transform_.position_.z))
+		return;
+
+	// Update() で適用した水平移動から、移動前の矩形を復元する。
+	XMFLOAT3 oldPosition;
+	XMStoreFloat3(&oldPosition, pos - currentSpeed_ * move);
+	const float dx = transform_.position_.x - oldPosition.x;
+	if (dx == 0.0f) return;
+
+	const CollisionRect before = MakePlayerRect(oldPosition);
+	const CollisionRect after = MakePlayerRect(transform_.position_);
 	const auto& gmap = ground_->GetMapData();
+	const int mapHeight = static_cast<int>(gmap.size());
+	float resolvedX = transform_.position_.x;
+	bool hit = false;
 
-	int mapWidth = static_cast<int>(gmap[0].size());
-	int mapHeight = static_cast<int>(gmap.size());
-
-	XMFLOAT3 wpos = transform_.position_;
-
-	// --------------------------------------------------------
-	// ワールド座標Xからマップ上のX座標へ変換する
-	//
-	// BLOCK_SIZE / 2 を加えることで、
-	// マスの中心位置を基準に判定している
-	// --------------------------------------------------------
-	int mapX =
-		static_cast<int>(
-			(wpos.x + BLOCK_SIZE / 2.0f) / BLOCK_SIZE
-			);
-
-	// 外壁はすべての行に存在するため、
-	// 判定用として固定行を参照する
-	int mapZ = 1;
-
-	// マップ範囲外を参照しないようにチェックする
-	if (mapX >= 0 &&
-		mapX < mapWidth &&
-		mapZ >= 0 &&
-		mapZ < mapHeight)
+	for (int row = 0; row < mapHeight; ++row)
 	{
-		// 現在のマスが壁で、
-		// プレイヤーが左右方向を向いている場合
-		if (gmap[mapZ][mapX] == 1 &&
-			(pdirection_ == PLAYER_LEFT ||
-				pdirection_ == PLAYER_RIGHT))
+		for (int col = 0; col < static_cast<int>(gmap[row].size()); ++col)
 		{
-			// すでに壁の中へ移動した後なので、
-			// このフレームで行った移動量を引いて元に戻す
-			pos = pos - currentSpeed_ * move;
+			if (gmap[row][col] != 1) continue;
+			const CollisionRect block = MakeBlockRect(row, col, mapHeight);
+			if (!OverlapY(before, block)) continue;
 
-			XMStoreFloat3(
-				&transform_.position_,
-				pos
-			);
-
-			// 壁にぶつかったので水平速度を0にする
-			currentSpeed_ = 0.0f;
+			if (dx > 0.0f && before.right <= block.left + CONTACT_EPSILON &&
+				after.right >= block.left)
+			{
+				const float x = block.left - PLAYER_HALF_WIDTH;
+				if (!hit || x < resolvedX) resolvedX = x;
+				hit = true;
+			}
+			else if (dx < 0.0f && before.left >= block.right - CONTACT_EPSILON &&
+				after.left <= block.right)
+			{
+				const float x = block.right + PLAYER_HALF_WIDTH;
+				if (!hit || x > resolvedX) resolvedX = x;
+				hit = true;
+			}
 		}
+	}
+	if (hit)
+	{
+		transform_.position_.x = resolvedX;
+		pos = XMLoadFloat3(&transform_.position_);
+		currentSpeed_ = 0.0f;
 	}
 }
 
 
 // ------------------------------------------------------------
 // 描画
-//
-// 状態に応じて待機モデルと歩行モデルを切り替える
 // ------------------------------------------------------------
 void Player::Draw()
 {
@@ -554,8 +619,6 @@ void Player::Release()
 
 // ------------------------------------------------------------
 // 他オブジェクトとの衝突通知
-//
-// 現在は処理なし
 // ------------------------------------------------------------
 void Player::OnCollision(GameObject* pTarget)
 {}
