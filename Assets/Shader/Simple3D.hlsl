@@ -70,7 +70,7 @@ VS_OUT VS(float4 pos : POSITION, float4 Normal : NORMAL, float2 Uv : TEXCOORD)
 float4 PS(VS_OUT inData) : SV_Target
 {
     const float AMBIENT_LIGHT = 0.3f; //環境光の強さ
-    const float MIN_AMBIENT = 0.3f; //環境光の強さ
+    const float MIN_AMBIENT = 0.4f; //環境光の強さ
 	//ライトの向き
 	float4 lightDir = g_vecLightDir;	//グルーバル変数は変更できないので、いったんローカル変数へ
 	lightDir = normalize(lightDir);	//向きだけが必要なので正規化

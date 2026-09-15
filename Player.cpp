@@ -38,9 +38,12 @@ namespace
 
 	// プレイヤーの判定寸法。原点を足元として扱う。
 	const float PLAYER_FOOT_OFFSET = 0.0f;
-	// Walking.fbx の基準形状（高さ約3.765）を基にした固定身長。
-	const float PLAYER_HEIGHT = 3.75f;
-	const float PLAYER_HALF_WIDTH = 0.4f; // 調整用。全幅0.8
+	// 身長はマップの縦2マス。判定寸法はワールド座標で定義する。
+	const float PLAYER_HEIGHT = BLOCK_INTERVAL_Y * 2.0f;
+	const float PLAYER_MODEL_HEIGHT = 3.76537f;
+	const float PLAYER_MODEL_SCALE = PLAYER_HEIGHT / PLAYER_MODEL_HEIGHT;
+	// 横幅は従来の判定幅を描画モデルと同じ割合で縮小する。
+	const float PLAYER_HALF_WIDTH = 0.4f * PLAYER_MODEL_SCALE;
 	const float CONTACT_EPSILON = 0.0001f;
 	const float WALL_WALK_ANIM_SPEED = 1.0f; // 壁押し中の歩行再生速度
 
@@ -585,26 +588,21 @@ void Player::ResolveWallCollision(XMVECTOR& pos, const XMVECTOR& move)
 // ------------------------------------------------------------
 void Player::Draw()
 {
-	// 待機中
+	// 描画用のコピーだけを縮小する。位置と矩形判定には倍率を重ねない。
+	// Idle.fbx も Walking.fbx と同じ元サイズを前提とする。
+	Transform drawTransform = transform_;
+	drawTransform.scale_.x *= PLAYER_MODEL_SCALE;
+	drawTransform.scale_.y *= PLAYER_MODEL_SCALE;
+	drawTransform.scale_.z *= PLAYER_MODEL_SCALE;
+
 	if (pstate_ == PLAYER_IDLE)
 	{
-		Model::SetTransform(
-			hIdleModel_,
-			transform_
-		);
-
+		Model::SetTransform(hIdleModel_, drawTransform);
 		Model::Draw(hIdleModel_);
 	}
-
-	// 歩行中・方向転換中
-	else if (pstate_ == PLAYER_WALK ||
-		pstate_ == PLAYER_TURN)
+	else if (pstate_ == PLAYER_WALK || pstate_ == PLAYER_TURN)
 	{
-		Model::SetTransform(
-			hWalkModel_,
-			transform_
-		);
-
+		Model::SetTransform(hWalkModel_, drawTransform);
 		Model::Draw(hWalkModel_);
 	}
 }

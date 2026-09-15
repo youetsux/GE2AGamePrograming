@@ -52,12 +52,12 @@ void TestScene::Update()
 //•`‰æ
 void TestScene::Draw()
 {
-	std::string scrText;
-	char buffer[256];
-	sprintf(buffer, "%010d", myScore);
-	scrText = "SCORE:" + std::string(buffer);
-	pText_->Draw(500, 50, scrText.c_str());
-	pText_->Draw(500, 100, scrText.c_str());
+	//std::string scrText;
+	//char buffer[256];
+	//sprintf(buffer, "%010d", myScore);
+	//scrText = "SCORE:" + std::string(buffer);
+	//pText_->Draw(500, 50, scrText.c_str());
+	//pText_->Draw(500, 100, scrText.c_str());
 }
 
 //ŠJ•ú
