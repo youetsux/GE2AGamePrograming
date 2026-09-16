@@ -21,7 +21,7 @@ namespace
 
 	// プレイヤーの初期位置
 	// このY座標を、地面に立っているときの高さとして使用する
-	const XMFLOAT3 START_POS = { 15.0f, 0.75f, 0.5f };
+	const XMFLOAT3 START_POS = { 15.0f, 0.75f, 0.5f };	// プレイヤーの初期座標
 
 	// ------------------------------------------------------------
 	// ジャンプに関する定数
@@ -31,27 +31,28 @@ namespace
 	const float AIR_CONTROL = 0.5f;			// 空中での加速・減速の強さ（地上比）
 
 	// ブロックの配置間隔・水平寸法・ゲーム上の歩行面。
-	const float BLOCK_INTERVAL_Y = 1.0f;
-	const float BLOCK_HALF_WIDTH = 0.99375f;
-	const float BLOCK_HALF_DEPTH = 0.98750f;
-	const float BLOCK_SURFACE_HEIGHT = 0.75f;
+	const float BLOCK_INTERVAL_Y = 1.0f;		// ブロック1マス分の縦方向の間隔
+	const float BLOCK_HALF_WIDTH = 0.99375f;	// ブロックの当たり判定の半分の幅
+	const float BLOCK_SURFACE_HEIGHT = 0.75f;	// ブロック上面の高さ
 
 	// プレイヤーの判定寸法。原点を足元として扱う。
-	const float PLAYER_FOOT_OFFSET = 0.0f;
+	const float PLAYER_FOOT_OFFSET = 0.0f;		// プレイヤーの足元位置の補正値
 	// 身長はマップの縦2マス。判定寸法はワールド座標で定義する。
-	const float PLAYER_HEIGHT = BLOCK_INTERVAL_Y * 2.0f;
-	const float PLAYER_MODEL_HEIGHT = 3.76537f;
+	const float PLAYER_HEIGHT = BLOCK_INTERVAL_Y * 2.0f;	// プレイヤーの当たり判定の高さ
+	const float PLAYER_MODEL_HEIGHT = 3.76537f;		// プレイヤーモデルの元の高さ（スケール計算用）
 	const float PLAYER_MODEL_SCALE = PLAYER_HEIGHT / PLAYER_MODEL_HEIGHT;
 	// 横幅は従来の判定幅を描画モデルと同じ割合で縮小する。
-	const float PLAYER_HALF_WIDTH = 0.4f * PLAYER_MODEL_SCALE;
-	const float CONTACT_EPSILON = 0.0001f;
+	const float PLAYER_HALF_WIDTH = 0.4f * PLAYER_MODEL_SCALE;	// プレイヤーの当たり判定の半分の幅
+	const float CONTACT_EPSILON = 0.0001f;				// 当たり判定の誤差吸収用の微小値
 	const float WALL_WALK_ANIM_SPEED = 1.0f; // 壁押し中の歩行再生速度
 
+	// 矩形の当たり判定を表す構造体
 	struct CollisionRect
 	{
 		float left, right, bottom, top;
 	};
 
+	// プレイヤーの座標から当たり判定用の矩形を生成する
 	CollisionRect MakePlayerRect(const XMFLOAT3& position)
 	{
 		const float foot = position.y - PLAYER_FOOT_OFFSET;
@@ -59,6 +60,7 @@ namespace
 			position.x + PLAYER_HALF_WIDTH, foot, foot + PLAYER_HEIGHT };
 	}
 
+	// ブロックの行・列・マップの高さから当たり判定用の矩形を生成する
 	CollisionRect MakeBlockRect(int row, int col, int mapHeight)
 	{
 		const float x = col * BLOCK_INTERVAL_X;
@@ -67,21 +69,18 @@ namespace
 			y, y + BLOCK_SURFACE_HEIGHT };
 	}
 
+	// 2つの矩形がX軸方向に重なっているか判定する
 	bool OverlapX(const CollisionRect& a, const CollisionRect& b)
 	{
 		return a.right > b.left + CONTACT_EPSILON &&
 			a.left < b.right - CONTACT_EPSILON;
 	}
 
+	// 2つの矩形がY軸方向に重なっているか判定する
 	bool OverlapY(const CollisionRect& a, const CollisionRect& b)
 	{
 		return a.top > b.bottom + CONTACT_EPSILON &&
 			a.bottom < b.top - CONTACT_EPSILON;
-	}
-
-	bool IsInBlockLane(float z)
-	{
-		return z >= -BLOCK_HALF_DEPTH && z <= BLOCK_HALF_DEPTH;
 	}
 
 	// ------------------------------------------------------------
@@ -436,7 +435,6 @@ void Player::UpdateJump()
 
 	const auto& gmap = ground_->GetMapData();
 	const int mapHeight = static_cast<int>(gmap.size());
-	const bool inLane = IsInBlockLane(transform_.position_.z);
 	const CollisionRect before = MakePlayerRect(transform_.position_);
 
 	if (isGrounded_)
@@ -444,20 +442,17 @@ void Player::UpdateJump()
 		// 既存仕様の常設床。穴を作る場合はこの床もマップで管理する。
 		bool supported = transform_.position_.y <= START_POS.y + CONTACT_EPSILON;
 		float supportY = START_POS.y;
-		if (inLane)
+		for (int row = 0; row < mapHeight; ++row)
 		{
-			for (int row = 0; row < mapHeight; ++row)
+			for (int col = 0; col < static_cast<int>(gmap[row].size()); ++col)
 			{
-				for (int col = 0; col < static_cast<int>(gmap[row].size()); ++col)
+				if (gmap[row][col] != 1) continue;
+				const CollisionRect block = MakeBlockRect(row, col, mapHeight);
+				if (OverlapX(before, block) &&
+					std::fabs(before.bottom - block.top) <= CONTACT_EPSILON)
 				{
-					if (gmap[row][col] != 1) continue;
-					const CollisionRect block = MakeBlockRect(row, col, mapHeight);
-					if (OverlapX(before, block) &&
-						std::fabs(before.bottom - block.top) <= CONTACT_EPSILON)
-					{
-						supported = true;
-						supportY = block.top + PLAYER_FOOT_OFFSET;
-					}
+					supported = true;
+					supportY = block.top + PLAYER_FOOT_OFFSET;
 				}
 			}
 		}
@@ -479,30 +474,27 @@ void Player::UpdateJump()
 	bool hit = false;
 
 	// 移動前後で面を跨いだかを調べ、最初に接触する面で止める。
-	if (inLane)
+	for (int row = 0; row < mapHeight; ++row)
 	{
-		for (int row = 0; row < mapHeight; ++row)
+		for (int col = 0; col < static_cast<int>(gmap[row].size()); ++col)
 		{
-			for (int col = 0; col < static_cast<int>(gmap[row].size()); ++col)
-			{
-				if (gmap[row][col] != 1) continue;
-				const CollisionRect block = MakeBlockRect(row, col, mapHeight);
-				if (!OverlapX(after, block)) continue;
+			if (gmap[row][col] != 1) continue;
+			const CollisionRect block = MakeBlockRect(row, col, mapHeight);
+			if (!OverlapX(after, block)) continue;
 
-				if (dy <= 0.0f && before.bottom >= block.top - CONTACT_EPSILON &&
-					after.bottom <= block.top)
-				{
-					const float y = block.top + PLAYER_FOOT_OFFSET;
-					if (!hit || y > resolvedY) resolvedY = y;
-					hit = true;
-				}
-				else if (dy > 0.0f && before.top <= block.bottom + CONTACT_EPSILON &&
-					after.top >= block.bottom)
-				{
-					const float y = block.bottom - PLAYER_HEIGHT + PLAYER_FOOT_OFFSET;
-					if (!hit || y < resolvedY) resolvedY = y;
-					hit = true;
-				}
+			if (dy <= 0.0f && before.bottom >= block.top - CONTACT_EPSILON &&
+				after.bottom <= block.top)
+			{
+				const float y = block.top + PLAYER_FOOT_OFFSET;
+				if (!hit || y > resolvedY) resolvedY = y;
+				hit = true;
+			}
+			else if (dy > 0.0f && before.top <= block.bottom + CONTACT_EPSILON &&
+				after.top >= block.bottom)
+			{
+				const float y = block.bottom - PLAYER_HEIGHT + PLAYER_FOOT_OFFSET;
+				if (!hit || y < resolvedY) resolvedY = y;
+				hit = true;
 			}
 		}
 	}
@@ -534,7 +526,7 @@ void Player::UpdateJump()
 // X方向：移動前後で左右の面を跨ぐかを判定
 void Player::ResolveWallCollision(XMVECTOR& pos, const XMVECTOR& move)
 {
-	if (ground_ == nullptr || !IsInBlockLane(transform_.position_.z))
+	if (ground_ == nullptr)
 		return;
 
 	// Update() で適用した水平移動から、移動前の矩形を復元する。
