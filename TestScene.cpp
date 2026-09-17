@@ -2,11 +2,13 @@
 #include "TestScene.h"
 #include "Player.h"
 #include "Ground.h"
+#include "MovingFloor.h"
 #include "Engine/Camera.h"
 #include "Engine/Text.h"
 
 namespace {
 	Ground* pGround;						// 地面オブジェクトへのポインタ
+	MovingFloor* pMovingFloor;			// 動く床オブジェクトへのポインタ
 	const int CAMERA_HEIGHT = 8.0f;		// カメラの高さオフセット
 	XMFLOAT3 START_POS = { 15.0f, 0.75, 0.5f };	// カメラ追従を開始するプレイヤーの位置
 	const float END_POS_X = 43.0f;			// カメラ追従を終了するプレイヤーのX座標
@@ -24,6 +26,7 @@ void TestScene::Initialize()
 	//pWp = Instantiate<Weapon>(this);
 	pPlayer_ = Instantiate <Player>(this);
 	pGround = Instantiate<Ground>(this);
+	pMovingFloor = Instantiate<MovingFloor>(this);
 	pPlayer_->SetGround(pGround);
 
 	Camera::SetPosition({ pPlayer_->GetPosition().x, pPlayer_->GetPosition().y + CAMERA_HEIGHT,-22 });

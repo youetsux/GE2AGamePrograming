@@ -106,7 +106,10 @@ void CsvReader::GetToComma(std::string *result, std::string data, DWORD* index)
 //指定した位置のデータを文字列で取得
 std::string CsvReader::GetString(DWORD x, DWORD y)
 {
-	if (x < 0 || x >= GetWidth() || y < 0 || y >= GetHeight())
+	if (y >= GetHeight())
+		return "";
+
+	if (x >= data_[y].size())
 		return "";
 
 	return data_[y][x];
@@ -121,6 +124,9 @@ int CsvReader::GetValue(DWORD x, DWORD y)
 //ファイルの列数を取得
 size_t CsvReader::GetWidth()
 {
+	if (data_.empty())
+		return 0;
+
 	return data_[0].size();
 }
 

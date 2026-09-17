@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -166,6 +166,7 @@
     <ClCompile Include="Engine\Texture.cpp" />
     <ClCompile Include="Food.cpp" />
     <ClCompile Include="Ground.cpp" />
+    <ClCompile Include="MovingFloor.cpp" />
     <ClCompile Include="Player.cpp" />
     <ClCompile Include="TestScene.cpp" />
   </ItemGroup>
@@ -196,6 +197,7 @@
     <ClInclude Include="Engine\Texture.h" />
     <ClInclude Include="Food.h" />
     <ClInclude Include="Ground.h" />
+    <ClInclude Include="MovingFloor.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="TestScene.h" />
   </ItemGroup>
@@ -217,6 +219,9 @@
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">VS</EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">VS</EntryPointName>
     </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="stage_objects.csv" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

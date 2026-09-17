@@ -1,0 +1,4 @@
+﻿type,model,startX,startY,startZ,endX,endY,endZ,speed,waitFrame,loop
+moving_floor,BrickG.fbx,22.0,0.75,0.0,30.0,0.75,0.0,0.05,30,1
+moving_floor,BrickG.fbx,18.0,0.75,0.0,18.0,3.75,0.0,0.04,20,1
+#obstacle,modelName,x,y,z,param1,param2,param3,param4,param5,param6
